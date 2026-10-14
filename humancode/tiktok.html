@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connecting TikTok — Human Code Studio</title>
+<style>
+  :root { --bg: #111113; --text: #f1efe9; --muted: #b4b1aa; --acc: #e8743b; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 64px 16px; text-align: center; }
+  a { color: var(--acc); } p { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+<h1>Returning to the studio…</h1>
+<p id="msg">TikTok sign-in finished. Passing the result to Human Code Studio on this computer.</p>
+<p><a id="go" href="#">Open the studio</a></p>
+</main>
+<script>
+  // Страница возврата после входа в TikTok: передаёт код входа студии на ЭТОМ компьютере (127.0.0.1) — никуда больше.
+  var q = location.search;
+  var to = "http://127.0.0.1:8791/api/tiktok/callback" + q;
+  document.getElementById("go").href = to;
+  if (/[?&](code|error)=/.test(q)) { location.replace(to); }
+  else { document.getElementById("msg").textContent = "No sign-in result in this link."; }
+</script>
+</body>
+</html>
