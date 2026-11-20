@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Проверка голоса</title>
+<style>
+  :root { --bg:#0a0a0c; --card:#16171b; --text:#e7e7ea; --muted:#9a9aa3; --line:#2a2b31; --accent:#d97706; --ok:#22c55e; --bad:#ef4444; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, sans-serif; padding:16px; max-width:720px; margin:0 auto; }
+  h1 { font-size:1.4rem; margin:4px 0 4px; } h2 { font-size:1.1rem; margin:0 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin:12px 0; }
+  .muted { color:var(--muted); font-size:.85rem; }
+  button { font:inherit; color:var(--text); background:#1f2026; border:1px solid var(--line); border-radius:12px; padding:10px 14px; min-height:44px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#111; font-weight:600; }
+  select, input[type=range] { width:100%; font:inherit; background:#1f2026; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:8px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+  .phrase { padding:10px 0; border-bottom:1px solid var(--line); }
+  .phrase:last-child { border-bottom:none; }
+  .w-ok { color:var(--ok); } .w-bad { color:var(--bad); text-decoration:underline; }
+  .big { font-size:1.15rem; font-weight:600; margin:8px 0; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:99px; background:#1f2026; border:1px solid var(--line); font-size:.85rem; }
+</style>
+</head>
+<body>
+<h1>Проверка голоса и распознавания</h1>
+<p class="muted">Открывайте в Chrome на телефоне. Две проверки: 1) насколько живо звучит английская озвучка; 2) насколько точно телефон распознаёт ваше произношение.</p>
+
+<div class="card">
+  <h2>1. Озвучка</h2>
+  <p class="muted">Выберите голос (лучше всего — en-US или en-GB от Google) и послушайте фразы. Оцените: живой голос или машинный, понятный ли.</p>
+  <label class="muted">Голос</label>
+  <select id="voice"></select>
+  <div class="row"><span class="muted">Скорость: <b id="rateV">1.0</b></span></div>
+  <input id="rate" type="range" min="0.6" max="1.4" step="0.1" value="1">
+  <div id="phrases"></div>
+  <p class="muted" id="vinfo"></p>
+</div>
+
+<div class="card">
+  <h2>2. Распознавание речи</h2>
+  <p class="muted">Нажмите «Сказать» и произнесите фразу. Зелёным — слова, которые телефон услышал правильно, красным — не разобрал или услышал иначе.</p>
+  <div class="big" id="target"></div>
+  <div class="row">
+    <button class="primary" id="say">🎙 Сказать</button>
+    <button id="next">Другая фраза</button>
+    <button id="listen">🔊 Послушать</button>
+  </div>
+  <div id="result"></div>
+  <p class="muted" id="sinfo"></p>
+</div>
+
+<div class="card">
+  <h2>Что написать мне</h2>
+  <p class="muted">1) Какой голос звучит лучше всех и насколько он живой (1–10). 2) Сколько слов распознаётся правильно, если говорить как обычно, и засчитывает ли телефон заведомо неправильное произношение (попробуйте сказать «sink» вместо «think»).</p>
+</div>
+
+<script>
+const PHRASES = [
+  "Hey everyone, welcome back to the channel.",
+  "Today we're going to talk about why first impressions matter so much.",
+  "Now here's the thing most people get wrong.",
+  "If you found this useful, let me know in the comments.",
+  "The market dropped three percent, but volatility actually went down.",
+  "I think this is one of the most underrated skills you can learn.",
+  "She would have called if she had known you were waiting.",
+  "Let's break this down step by step.",
+];
+const SAY = [
+  "Welcome back to the channel.",
+  "I think this is really important.",
+  "Let me know what you think in the comments.",
+  "We're going to talk about body language today.",
+  "The weather was terrible, so we stayed at home.",
+  "I've been working on this project for three months.",
+  "Think about it for a second.",
+  "She didn't want to sell her stocks.",
+];
+const $ = id => document.getElementById(id);
+let voices = [];
+const synth = window.speechSynthesis;
+
+function loadVoices() {
+  if (!synth) { $('vinfo').textContent = 'Озвучка в этом браузере недоступна.'; return; }
+  voices = synth.getVoices().filter(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+  const sel = $('voice'); const keep = sel.value; sel.innerHTML = '';
+  voices.forEach((v, i) => { const o = document.createElement('option'); o.value = i; o.textContent = `${v.name} (${v.lang})${v.localService ? '' : ' · сеть'}`; sel.appendChild(o); });
+  const best = voices.findIndex(v => /google/i.test(v.name) && /en[-_]US/i.test(v.lang));
+  sel.value = keep || (best >= 0 ? best : 0);
+  $('vinfo').textContent = voices.length ? `Английских голосов: ${voices.length}` : 'Английские голоса не найдены — установите «Синтез речи Google» в настройках телефона.';
+}
+if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; }
+
+function speak(text) {
+  if (!synth) return;
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = voices[+$('voice').value]; if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
+  u.rate = +$('rate').value;
+  synth.speak(u);
+}
+$('rate').oninput = () => $('rateV').textContent = (+$('rate').value).toFixed(1);
+$('phrases').innerHTML = PHRASES.map((p, i) => `<div class="phrase"><button data-i="${i}">▶</button> ${p}</div>`).join('');
+$('phrases').onclick = e => { const b = e.target.closest('button'); if (b) speak(PHRASES[+b.dataset.i]); };
+
+// распознавание
+let ti = 0;
+const norm = s => s.toLowerCase().replace(/[’']/g, "'").replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
+function showTarget() { $('target').textContent = SAY[ti]; $('result').innerHTML = ''; }
+showTarget();
+$('next').onclick = () => { ti = (ti + 1) % SAY.length; showTarget(); };
+$('listen').onclick = () => speak(SAY[ti]);
+
+function compare(target, heard) {
+  const t = norm(target), h = norm(heard);
+  // выравнивание по наибольшей общей подпоследовательности
+  const dp = Array.from({ length: t.length + 1 }, () => new Array(h.length + 1).fill(0));
+  for (let i = t.length - 1; i >= 0; i--) for (let j = h.length - 1; j >= 0; j--)
+    dp[i][j] = t[i] === h[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const ok = new Array(t.length).fill(false);
+  let i = 0, j = 0;
+  while (i < t.length && j < h.length) { if (t[i] === h[j]) { ok[i] = true; i++; j++; } else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++; }
+  return { words: t, ok, score: Math.round(100 * ok.filter(Boolean).length / t.length) };
+}
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) { $('sinfo').textContent = 'Распознавание речи в этом браузере недоступно — откройте страницу в Chrome.'; $('say').disabled = true; }
+$('say').onclick = () => {
+  const r = new SR();
+  r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 3;
+  $('say').disabled = true; $('say').textContent = '… слушаю';
+  r.onresult = e => {
+    const alts = [...e.results[0]].map(a => ({ t: a.transcript, c: a.confidence }));
+    const best = alts.map(a => ({ ...a, cmp: compare(SAY[ti], a.t) })).sort((a, b) => b.cmp.score - a.cmp.score)[0];
+    const words = best.cmp.words.map((w, k) => `<span class="${best.cmp.ok[k] ? 'w-ok' : 'w-bad'}">${w}</span>`).join(' ');
+    $('result').innerHTML = `<p class="big">${words}</p>
+      <p><span class="pill">${best.cmp.score >= 90 ? '✅ засчитано' : '✗ не засчитано'}</span> совпадение ${best.cmp.score}%</p>
+      <p class="muted">Телефон услышал: «${alts[0].t}»${alts[0].c ? ` · уверенность ${Math.round(alts[0].c * 100)}%` : ''}${alts.length > 1 ? `<br>Другие варианты: ${alts.slice(1).map(a => '«' + a.t + '»').join(', ')}` : ''}</p>`;
+  };
+  r.onerror = e => { $('result').innerHTML = `<p class="muted">Ошибка: ${e.error}. Разрешите доступ к микрофону и попробуйте ещё раз.</p>`; };
+  r.onend = () => { $('say').disabled = false; $('say').textContent = '🎙 Сказать'; };
+  r.start();
+};
+</script>
+</body>
+</html>
